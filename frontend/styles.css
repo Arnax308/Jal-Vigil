@@ -309,6 +309,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); }
 .link:hover { text-decoration: underline; }
 
 .approve-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.passcode {
+  width: 190px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(74, 222, 128, 0.4);
+  background: rgba(3, 7, 15, 0.6); outline: none; font-family: var(--mono); letter-spacing: 0.08em;
+}
+.passcode:focus { border-color: #4ade80; box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.15); }
 .approve {
   position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px 10px 12px;
   border-radius: 12px; border: 1px solid rgba(74, 222, 128, 0.5); background: rgba(74, 222, 128, 0.1);

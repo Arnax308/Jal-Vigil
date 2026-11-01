@@ -46,6 +46,9 @@ class Settings:
     telegram_chat_id: str = _env("TELEGRAM_CHAT_ID")
     telegram_channel_url: str = _env("TELEGRAM_CHANNEL_URL")  # optional; derived from an @handle
 
+    # When set, approving an alert requires this passcode (protects a public deployment).
+    approve_passcode: str = _env("APPROVE_PASSCODE")
+
     overpass_urls: tuple[str, ...] = _env_list(
         "OVERPASS_URLS",
         "https://overpass-api.de/api/interpreter,"

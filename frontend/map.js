@@ -187,6 +187,11 @@ export function createMap(container, { onPick, onReady } = {}) {
       map.flyTo({ center: CHENNAI, zoom: 10.5, pitch: 55, bearing: -20, duration: 2200, essential: true });
     },
     setResult(result) {
+      // A run on a warm cache can finish before the basemap has loaded; draw once it has.
+      if (!map.getSource("cells")) {
+        map.once("load", () => this.setResult(result));
+        return;
+      }
       idleSpin = false;
       popup.remove();
       rainByCell = result.rain_hourly?.by_cell || {};

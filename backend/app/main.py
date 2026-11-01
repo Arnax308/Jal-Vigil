@@ -3,7 +3,7 @@
 POST /api/runs                 start an agent run
 GET  /api/runs/{id}/events     live trace (Server-Sent Events)
 GET  /api/runs/{id}            final result
-POST /api/runs/{id}/approve    officer approval; posts the alert to the Telegram channel
+POST /api/runs/{id}/approve    officer approval ({passcode} if APPROVE_PASSCODE is set); posts to Telegram
 POST /api/runs/{id}/speech     re-try the Tamil voice alert (normally generated automatically)
 POST /api/runs/{id}/route      safe route from a point or place to the nearest relief site
 GET  /api/runs/{id}/buildings.csv | .geojson   at-risk buildings for download
@@ -11,6 +11,7 @@ GET  /api/runs/{id}/buildings.csv | .geojson   at-risk buildings for download
 
 import asyncio
 import csv
+import hmac
 import io
 import json
 from contextlib import asynccontextmanager
@@ -40,6 +41,16 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 _background: set[asyncio.Task] = set()
+
+
+@app.middleware("http")
+async def revalidate_frontend(request: Request, call_next):
+    """Browsers must re-check the UI files (a cheap 304 when unchanged) so a redeploy never mixes
+    fresh HTML with stale cached JavaScript modules."""
+    response = await call_next(request)
+    if not request.url.path.startswith(("/api/", "/audio/")):
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
 
 
 class RunRequest(BaseModel):
@@ -79,6 +90,7 @@ def health() -> dict:
         "tamil_speech": bodhan.speech_configured(),
         "telegram": telegram.configured(),
         "telegram_channel": telegram.channel_url(),
+        "approval_passcode": bool(settings.approve_passcode),
         "replay_range": [REPLAY_EARLIEST.isoformat(), (date.today() - timedelta(days=3)).isoformat()],
     }
 
@@ -121,9 +133,23 @@ async def stream_events(run_id: str, request: Request) -> StreamingResponse:
     )
 
 
+class ApproveRequest(BaseModel):
+    passcode: str | None = Field(default=None, max_length=200)
+
+
+def passcode_ok(given: str | None) -> bool:
+    """True when no officer passcode is configured, or the given one matches (constant-time)."""
+    if not settings.approve_passcode:
+        return True
+    return given is not None and hmac.compare_digest(given.encode(), settings.approve_passcode.encode())
+
+
 @app.post("/api/runs/{run_id}/approve")
-async def approve_run(run_id: str) -> dict:
+async def approve_run(run_id: str, body: ApproveRequest | None = None) -> dict:
     run = _run_or_404(run_id)
+    if not passcode_ok(body.passcode if body else None):
+        await asyncio.sleep(1)  # slows down guessing from a public page
+        raise HTTPException(401, "Wrong officer passcode")
     if run.status != "awaiting_approval":
         raise HTTPException(409, f"Run is '{run.status}', only drafted alerts can be approved")
     outcome = await asyncio.to_thread(runner.approve, run)

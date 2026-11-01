@@ -172,3 +172,16 @@ def test_translation_retries_sentence_by_sentence_when_numbers_drop(monkeypatch)
     monkeypatch.setattr(nodes.bodhan, "translate", lambda text: sentences.get(text, "134 மிமீ வரை மழை."))
     tamil, problems = nodes._translate_checked(english)
     assert problems == [] and "182" in tamil
+
+
+def test_approval_passcode(monkeypatch):
+    from dataclasses import replace
+
+    from app import main
+
+    monkeypatch.setattr(main, "settings", replace(main.settings, approve_passcode=""))
+    assert main.passcode_ok(None)  # no passcode configured: approval is open, as before
+    monkeypatch.setattr(main, "settings", replace(main.settings, approve_passcode="monsoon-42"))
+    assert main.passcode_ok("monsoon-42")
+    assert not main.passcode_ok("monsoon-41")
+    assert not main.passcode_ok(None)

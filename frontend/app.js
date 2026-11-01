@@ -52,6 +52,7 @@ async function loadHealth() {
     ];
     if (h.telegram) chips.push([`Telegram · ${h.telegram_channel ? "@" + h.telegram_channel.split("/").pop() : "ready"}`, true]);
     if (h.telegram_channel) setupTelegram(h.telegram_channel);
+    passcodeRequired = Boolean(h.approval_passcode);
     $("#capabilities").replaceChildren(...chips.map(([t, on]) => chip(t, on ? "on" : "off")));
     const [min, max] = h.replay_range;
     Object.assign($("#replay-date"), { min, max });
@@ -286,6 +287,7 @@ function renderAlert(res) {
   $("#approve-label").textContent = "Hold to approve";
   $("#approve-stamp").hidden = true;
   $("#tg-posts").hidden = true;
+  passcodeInput.hidden = !passcodeRequired;
 }
 
 function setLang(lang) {
@@ -316,10 +318,19 @@ $("#voice-retry").addEventListener("click", async () => {
 
 // approve: press and hold, so a stray click never releases a public alert
 
-let holdTimer = null;
+let holdTimer = null, passcodeRequired = false;
 const approveBtn = $("#approve-button");
+const passcodeInput = $("#approve-passcode");
+
+function passcodeMissing() {
+  if (!passcodeRequired || passcodeInput.value) return false;
+  passcodeInput.focus();
+  toast("Enter the officer passcode to approve");
+  return true;
+}
+
 approveBtn.addEventListener("pointerdown", () => {
-  if (approveBtn.disabled) return;
+  if (approveBtn.disabled || passcodeMissing()) return;
   approveBtn.classList.add("holding");
   $("#approve-label").textContent = "Keep holding…";
   holdTimer = setTimeout(approve, 1100);
@@ -337,11 +348,14 @@ approveBtn.addEventListener("click", (e) => { if (e.detail === 0) approve(); });
 
 async function approve() {
   holdTimer = null;
+  if (passcodeMissing()) return;
   approveBtn.disabled = true;
   approveBtn.classList.remove("holding");
   $("#approve-label").textContent = "Approving…";
   try {
-    const res = await api(`/api/runs/${currentRun}/approve`, { method: "POST" });
+    const body = JSON.stringify({ passcode: passcodeRequired ? passcodeInput.value : null });
+    const res = await api(`/api/runs/${currentRun}/approve`, { method: "POST", body });
+    passcodeInput.hidden = true;
     const when = new Date(res.approved_at * 1000).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
     $("#approve-label").textContent = "Approved";
     const stamp = $("#approve-stamp");
@@ -353,6 +367,10 @@ async function approve() {
   } catch (err) {
     approveBtn.disabled = false;
     $("#approve-label").textContent = "Hold to approve";
+    if (/passcode/i.test(err.message)) {
+      passcodeInput.value = "";
+      passcodeInput.focus();
+    }
     toast(err.message);
   }
 }

@@ -55,6 +55,7 @@ committed) and restart the app:
 | `BODHAN_TRANSLATE_API_KEY` | console.bodhan.ai (₹10 free credit) | Tamil alert |
 | `BODHAN_TTS_API_KEY` | console.bodhan.ai | Tamil voice alert |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | @BotFather; chat id is the channel's `@handle` | posts approved alerts to the public channel |
+| `APPROVE_PASSCODE` | a passcode you choose | officers must enter it to approve; set it on any public deployment |
 
 The top bar of the app shows which services are connected.
 
@@ -190,7 +191,7 @@ of the judges is instant even if a public server is slow that day.
 | POST | `/api/runs` | start a run: `{mode, replay_date, horizon_hours, query}` |
 | GET | `/api/runs/{id}/events` | live trace (Server-Sent Events, resumable) |
 | GET | `/api/runs/{id}` | final result: cells GeoJSON, facilities, routes, alert, sources |
-| POST | `/api/runs/{id}/approve` | officer approval; posts the alert to the Telegram channel |
+| POST | `/api/runs/{id}/approve` | officer approval (`{passcode}` when `APPROVE_PASSCODE` is set); posts the alert to the Telegram channel |
 | POST | `/api/runs/{id}/route` | safe route from `{place}` or `{lat, lon}` to the nearest relief site |
 | GET | `/api/runs/{id}/buildings.csv` | at-risk buildings (CSV) |
 | GET | `/api/runs/{id}/buildings.geojson` | at-risk buildings (GeoJSON) |
@@ -199,9 +200,21 @@ of the judges is instant even if a public server is slow that day.
 
 ## Deploy
 
-One service serves both API and UI. `Procfile` works on Heroku (GitHub Student Pack credit); on any
-host run `uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT`. Use an always-on
-plan so the demo never hits a cold start.
+One service serves both API and UI, so any host that runs a long-lived Python web server works
+(not serverless platforms like Vercel: runs continue in the background and stream live). On
+**Render**, create a Web Service from this repo with:
+
+| Setting | Value |
+|---|---|
+| Language | Python 3 |
+| Build command | `pip install -r backend/requirements.txt` |
+| Start command | `uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT` |
+| Health check path | `/api/health` |
+| Environment | the keys above, including `APPROVE_PASSCODE` |
+
+Use an always-on instance so the demo never hits a cold start. At start-up the server fetches the
+slow, rarely changing data (boundary, terrain, 20-year rainfall, buildings) in the background, so
+the first run after a deploy is quick. `Procfile` covers Heroku-style hosts.
 
 ## Known limits
 
