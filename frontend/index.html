@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chennai Flood Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+Tamil:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="map" aria-label="Flood risk map of Chennai"></div>
+  <div class="map-vignette" aria-hidden="true"></div>
+  <div id="radar" class="radar" aria-hidden="true" hidden></div>
+  <div id="progress" class="progress" aria-hidden="true"></div>
+
+  <header class="hud glass">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+        <defs><linearGradient id="lg" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs>
+        <path d="M20 3 C27 13 33 19 33 26 a13 13 0 0 1 -26 0 C7 19 13 13 20 3Z" fill="none" stroke="url(#lg)" stroke-width="2.5"/>
+        <path class="wave" d="M10 27 q2.5 -3 5 0 t5 0 t5 0 t5 0" fill="none" stroke="url(#lg)" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <h1 id="app-name">Chennai Flood Agent</h1>
+        <p class="tagline">Autonomous flood early warning for Greater Chennai</p>
+      </div>
+    </div>
+    <div id="capabilities" class="chips" aria-label="Connected services"></div>
+    <div class="clock"><span class="live-dot" aria-hidden="true"></span><span id="clock"></span></div>
+  </header>
+
+  <!-- left: mission + agent -->
+  <aside class="panel left glass" aria-label="Agent controls">
+    <form id="run-form" class="mission">
+      <div class="section-title">Mission</div>
+      <div class="segmented" role="radiogroup" aria-label="Data source">
+        <label><input type="radio" name="mode" value="live" checked><span>Live forecast</span></label>
+        <label><input type="radio" name="mode" value="replay"><span>Replay event</span></label>
+      </div>
+      <div id="replay-field" class="field" hidden>
+        <label for="replay-date">Replay from</label>
+        <input type="date" id="replay-date" value="2023-12-03">
+      </div>
+      <div class="field">
+        <span class="label">Look ahead</span>
+        <div class="segmented small" role="radiogroup" aria-label="Look ahead">
+          <label><input type="radio" name="horizon" value="24"><span>24 h</span></label>
+          <label><input type="radio" name="horizon" value="48"><span>48 h</span></label>
+          <label><input type="radio" name="horizon" value="72" checked><span>72 h</span></label>
+        </div>
+      </div>
+      <div class="field">
+        <label for="query">Ask the agent <span class="muted">(optional)</span></label>
+        <input type="text" id="query" maxlength="300" autocomplete="off" placeholder="e.g. Check Adyar and Velachery for the next 48 hours">
+      </div>
+      <button type="submit" id="run-button" class="deploy"><span class="deploy-glow" aria-hidden="true"></span><span id="run-label">Deploy agent</span></button>
+      <p id="form-error" class="error" role="alert" hidden></p>
+    </form>
+
+    <div class="section-title row">Agent graph <span id="run-status" class="status-pill" aria-live="polite">idle</span></div>
+    <ol id="pipeline" class="pipeline" aria-label="Agent steps"></ol>
+
+    <details class="trace-wrap" open>
+      <summary class="section-title">Live reasoning trace <span id="trace-count" class="muted"></span></summary>
+      <ol id="trace" class="trace" aria-live="polite"></ol>
+    </details>
+    <div class="section-title">Data sources</div>
+    <div id="sources" class="sources" aria-label="Data sources"><span class="muted">Every number comes from these live APIs.</span></div>
+  </aside>
+
+  <!-- right: results -->
+  <aside id="results" class="panel right glass" aria-label="Results" hidden>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" class="tab active" data-tab="alert" aria-selected="true">Alert</button>
+      <button type="button" role="tab" class="tab" data-tab="buildings" aria-selected="false">Buildings <span id="buildings-count" class="count"></span></button>
+      <button type="button" role="tab" class="tab" data-tab="routes" aria-selected="false">Safe routes</button>
+    </div>
+
+    <section id="tab-alert" class="tab-body" role="tabpanel">
+      <div id="no-alert" class="all-clear" hidden>
+        <div class="all-clear-icon" aria-hidden="true">✓</div>
+        <h3>All clear</h3>
+        <p id="all-clear-text"></p>
+      </div>
+      <article id="alert-card" hidden>
+        <div id="severity" class="severity"></div>
+        <div class="lang-toggle" role="tablist" aria-label="Alert language">
+          <button type="button" class="lang active" data-lang="en">English</button>
+          <button type="button" class="lang" data-lang="ta" lang="ta">தமிழ்</button>
+        </div>
+        <h2 id="alert-headline"></h2>
+        <p id="alert-body"></p>
+        <ul id="alert-actions" class="actions"></ul>
+        <div id="alert-meta" class="meta-row"></div>
+
+        <div id="voice" class="voice" hidden>
+          <div class="voice-head">
+            <button type="button" id="voice-play" class="voice-play" aria-label="Play Tamil voice alert" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5v14l11-7z"/><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+            </button>
+            <div class="voice-info">
+              <div class="voice-title">Tamil voice alert <span class="muted">· Bodhan Indic-Speak</span></div>
+              <div id="voice-status" class="voice-status">Waiting for the Tamil alert…</div>
+            </div>
+            <label class="autoplay"><input type="checkbox" id="voice-autoplay" checked> Auto-play</label>
+          </div>
+          <canvas id="voice-wave" class="voice-wave" height="56"></canvas>
+          <div id="voice-segments" class="voice-segments" aria-hidden="true"></div>
+          <div class="voice-foot">
+            <a id="voice-download" class="link" download hidden>Download WAV</a>
+            <button type="button" id="voice-retry" class="link" hidden>Try again</button>
+          </div>
+          <audio id="voice-audio" preload="auto"></audio>
+        </div>
+
+        <div class="approve-row">
+          <button type="button" id="approve-button" class="approve">
+            <svg class="hold-ring" viewBox="0 0 36 36" aria-hidden="true"><circle class="track" cx="18" cy="18" r="16"/><circle class="fill" cx="18" cy="18" r="16"/></svg>
+            <span id="approve-label">Hold to approve</span>
+          </button>
+          <div id="approve-stamp" class="stamp" hidden></div>
+        </div>
+      </article>
+    </section>
+
+    <section id="tab-buildings" class="tab-body" role="tabpanel" hidden>
+      <p class="lead">Critical buildings inside high-risk cells, from OpenStreetMap.</p>
+      <div id="kind-chips" class="kind-chips"></div>
+      <div class="search-row">
+        <input type="search" id="building-search" placeholder="Search name, area or address" aria-label="Search buildings">
+      </div>
+      <div class="downloads">
+        <a id="dl-csv" class="btn ghost" download>⬇ CSV (Excel)</a>
+        <a id="dl-geojson" class="btn ghost" download>⬇ GeoJSON (GIS)</a>
+      </div>
+      <ul id="building-list" class="building-list"></ul>
+      <button type="button" id="building-more" class="btn ghost wide" hidden>Show more</button>
+    </section>
+
+    <section id="tab-routes" class="tab-body" role="tabpanel" hidden>
+      <div class="finder">
+        <div class="section-title">Find my safe route</div>
+        <p class="lead">From anywhere in Chennai to the nearest relief site, steering around flooded cells.</p>
+        <form id="route-form" class="route-form">
+          <input type="text" id="route-place" placeholder="Area, street or landmark" aria-label="Start point">
+          <button type="submit" class="btn">Route</button>
+        </form>
+        <div class="route-buttons">
+          <button type="button" id="route-pick" class="btn ghost">⌖ Pick on map</button>
+          <button type="button" id="route-locate" class="btn ghost">◎ Use my location</button>
+        </div>
+        <div id="route-result" class="route-result" aria-live="polite"></div>
+      </div>
+      <div class="section-title">Agent-planned evacuations</div>
+      <ul id="evac-list" class="evac-list"></ul>
+    </section>
+  </aside>
+
+  <!-- bottom: stats + rainfall time-lapse -->
+  <section id="dock" class="dock glass" aria-label="Rainfall time-lapse" hidden>
+    <div id="stats" class="stats"></div>
+    <div class="timeline">
+      <button type="button" id="tl-play" class="tl-play" aria-label="Play rainfall time-lapse">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5v14l11-7z"/><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+      </button>
+      <div class="tl-chart-wrap">
+        <div class="tl-head"><span>Hourly rainfall · wettest cell</span><span id="tl-readout" class="mono"></span></div>
+        <svg id="tl-chart" class="tl-chart" role="img" aria-label="Hourly rainfall chart"></svg>
+        <div id="tl-tip" class="tip" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <div id="legend" class="legend glass" hidden>
+    <div class="legend-title">Flood risk</div>
+    <div class="legend-row"><i style="--c:var(--risk-severe)"></i>Severe</div>
+    <div class="legend-row"><i style="--c:var(--risk-high)"></i>High</div>
+    <div class="legend-row"><i style="--c:var(--risk-moderate)"></i>Moderate</div>
+    <div class="legend-row"><i style="--c:var(--risk-low)"></i>Low</div>
+    <div class="legend-title">Buildings</div>
+    <div class="legend-row"><img src="" alt="" data-icon="health">Health care</div>
+    <div class="legend-row"><img src="" alt="" data-icon="relief">Relief site / school</div>
+    <div class="legend-row"><img src="" alt="" data-icon="emergency">Police / fire</div>
+    <div class="legend-note">Column height = rain so far</div>
+  </div>
+
+  <!-- empty state -->
+  <section id="hero" class="hero">
+    <div class="hero-card glass">
+      <div class="hero-kicker">Live rainfall → flood risk → safe routes → Tamil alerts</div>
+      <h2>Which part of Chennai floods next?</h2>
+      <p>The agent reads live forecasts and 20 years of local rainfall, scores every 2.8 km of the city, finds the hospitals and schools in harm's way, routes people around flooded roads, and drafts a fact-checked alert in English and Tamil.</p>
+      <div class="scenarios">
+        <button type="button" class="scenario" data-mode="live"><b>Live forecast</b><span>Next 72 hours, right now</span></button>
+        <button type="button" class="scenario" data-mode="replay" data-date="2023-12-03"><b>Cyclone Michaung</b><span>Replay 3 Dec 2023</span></button>
+        <button type="button" class="scenario" data-mode="replay" data-date="2024-11-30"><b>Cyclone Fengal</b><span>Replay 30 Nov 2024</span></button>
+        <button type="button" class="scenario" data-mode="replay" data-date="2022-11-01"><b>Monsoon onset</b><span>Replay 1 Nov 2022</span></button>
+      </div>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
