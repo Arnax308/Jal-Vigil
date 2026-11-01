@@ -53,6 +53,9 @@ class Settings:
         "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     )
 
+    # Fetch the slow, rarely changing data (boundary, terrain, climatology, buildings) at start-up.
+    warm_cache: bool = _env("WARM_CACHE", "1") not in ("0", "false", "no")
+
     max_routes: int = int(_env("MAX_ROUTES", "5"))
     max_named_localities: int = int(_env("MAX_NAMED_LOCALITIES", "6"))
 

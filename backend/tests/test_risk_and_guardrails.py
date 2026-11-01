@@ -158,3 +158,17 @@ def test_live_post_has_no_demo_label():
     from app.agent.runner import _format
 
     assert "DEMO" not in _format(_approved_run(None), "en", 0)
+
+
+def test_translation_retries_sentence_by_sentence_when_numbers_drop(monkeypatch):
+    from app.agent import nodes
+
+    english = "Up to 134 mm of rain is expected. The total may reach 182 mm."
+    sentences = {
+        "Up to 134 mm of rain is expected.": "134 மிமீ வரை மழை எதிர்பார்க்கப்படுகிறது.",
+        "The total may reach 182 mm.": "மொத்தம் 182 மிமீ வரை இருக்கலாம்.",
+    }
+    # The whole passage comes back missing a figure; the sentences come back intact.
+    monkeypatch.setattr(nodes.bodhan, "translate", lambda text: sentences.get(text, "134 மிமீ வரை மழை."))
+    tamil, problems = nodes._translate_checked(english)
+    assert problems == [] and "182" in tamil

@@ -3,6 +3,7 @@
 import contextvars
 import json
 import math
+import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
@@ -141,14 +142,18 @@ def fetch_rainfall(state: FloodState) -> dict:
     return {"rain": rain, "sources": [rain.fetched.provenance()]}
 
 
-@node("fetch_climatology", "Fetch 20-year local rainfall extremes")
-def fetch_climatology(state: FloodState) -> dict:
+def climatology_anchors() -> list[tuple[float, float]]:
+    """Four points spread over the city; ERA5 cells are ~25 km, so more would repeat the same cell."""
     south, west, north, east = settings.bbox
-    anchors = [
+    return [
         (round(south + (north - south) * fy, 3), round(west + (east - west) * fx, 3))
         for fy in (0.25, 0.75) for fx in (0.25, 0.65)
     ]
-    stats, fetched = openmeteo.climatology(anchors)
+
+
+@node("fetch_climatology", "Fetch 20-year local rainfall extremes")
+def fetch_climatology(state: FloodState) -> dict:
+    stats, fetched = openmeteo.climatology(climatology_anchors())
     levels = ", ".join(f"{s.two_year_1d:.0f}" for s in stats)
     emit("tool_result", f"2-year wettest day at {len(stats)} ERA5 anchors over {stats[0].years} years: "
                         f"{levels} mm (record day {max(s.record_1d for s in stats):.0f} mm)")
@@ -425,6 +430,15 @@ def _translate_checked(english: str) -> tuple[str | None, list[str]]:
     except (ToolError, KeyError, IndexError, ValueError) as exc:
         return None, [str(exc)]
     problems = check_translation(english, tamil)
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", english) if s.strip()]
+    if problems and len(sentences) > 1:
+        # Long passages sometimes lose a figure; shorter inputs keep them more reliably.
+        emit("retry", f"Translation check failed ({'; '.join(problems)}); retrying sentence by sentence")
+        try:
+            tamil = " ".join(bodhan.translate(s) for s in sentences)
+        except (ToolError, KeyError, IndexError, ValueError) as exc:
+            return None, problems + [str(exc)]
+        problems = check_translation(english, tamil)
     return (None if problems else tamil), problems
 
 

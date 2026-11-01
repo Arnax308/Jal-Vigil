@@ -13,6 +13,7 @@ import asyncio
 import csv
 import io
 import json
+from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal
@@ -22,6 +23,7 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
+from . import warmup
 from .agent import runner
 from .clients import bodhan, llm, osm, telegram
 from .clients.openmeteo import REPLAY_EARLIEST
@@ -29,7 +31,14 @@ from .config import ROOT, settings
 from .events import Run, registry
 from .http import ToolError
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    warmup.start()  # fills the cache in the background; the server is ready immediately
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 _background: set[asyncio.Task] = set()
 
 

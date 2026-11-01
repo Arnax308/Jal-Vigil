@@ -1,5 +1,7 @@
 """OpenStreetMap: city boundary and place names (Nominatim), critical facilities (Overpass)."""
 
+import contextvars
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from shapely.geometry import Point, shape
@@ -85,7 +87,7 @@ FACILITY_GROUPS = {
     "shelter": ('"amenity"="community_centre"', '"social_facility"="shelter"', '"emergency"="assembly_point"'),
     "emergency services": ('"amenity"="police"', '"amenity"="fire_station"'),
 }
-_FACILITY_QUERY = "[out:json][timeout:90];({statements});out center tags;"
+_FACILITY_QUERY = "[out:json][timeout:60];({statements});out center tags;"
 
 
 def _kind(tags: dict) -> str:
@@ -107,18 +109,33 @@ def _address(tags: dict) -> str:
     return ", ".join(p for p in parts if p)
 
 
-def facilities(boundary: BaseGeometry) -> tuple[list[Facility], list[Fetched], list[str]]:
-    """Critical buildings inside the city; returns them, the fetches used, and any groups that failed."""
+def _fetch_group(index: int, group: str, filters: tuple[str, ...]) -> Fetched:
     s, w, n, e = settings.bbox
+    statements = "".join(f"nwr[{f}]({s},{w},{n},{e});" for f in filters)
+    # Each group starts on a different mirror, so parallel queries don't all queue on one server.
+    mirrors = settings.overpass_urls[index:] + settings.overpass_urls[:index]
+    return fetch_json(
+        "OSM Overpass API", mirrors, method="POST",
+        data={"data": _FACILITY_QUERY.format(statements=statements)},
+        cache_key=f"facilities:{group}:{s},{w},{n},{e}", ttl=30 * DAY, retries=0, timeout=60,
+    )
+
+
+def facilities(boundary: BaseGeometry) -> tuple[list[Facility], list[Fetched], list[str]]:
+    """Critical buildings inside the city; returns them, the fetches used, and any groups that failed.
+
+    The groups are fetched in parallel; each worker carries the caller's trace context.
+    """
     found, fetches, failed = [], [], []
-    for group, filters in FACILITY_GROUPS.items():
-        statements = "".join(f"nwr[{f}]({s},{w},{n},{e});" for f in filters)
+    groups = list(FACILITY_GROUPS.items())
+    with ThreadPoolExecutor(max_workers=len(groups)) as pool:
+        futures = [
+            pool.submit(contextvars.copy_context().run, _fetch_group, i, group, filters)
+            for i, (group, filters) in enumerate(groups)
+        ]
+    for (group, _), future in zip(groups, futures):
         try:
-            fetched = fetch_json(
-                "OSM Overpass API", settings.overpass_urls, method="POST",
-                data={"data": _FACILITY_QUERY.format(statements=statements)},
-                cache_key=f"facilities:{group}:{s},{w},{n},{e}", ttl=30 * DAY, retries=1, timeout=100,
-            )
+            fetched = future.result()
         except ToolError as exc:
             failed.append(f"{group} ({exc})")
             continue
