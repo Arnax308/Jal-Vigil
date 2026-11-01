@@ -1,12 +1,19 @@
 # Jal-Vigil
 
-An autonomous agent that turns live rainfall forecasts into a 3D flood-risk map of Chennai, lists
+An autonomous agent that turns live rainfall forecasts into a 3D flood-risk map of a city, lists
 every critical building inside high-risk areas (downloadable), plans evacuation routes that steer
 around flooded cells, answers "how do I get to safety from here?" for any point in the city, and
-drafts a fact-checked English alert. IIT Madras's Bodhan AI models translate it into Tamil and speak
-it, streamed so the voice starts within seconds, and an officer approves the alert before release.
+drafts a fact-checked English alert. IIT Madras's Bodhan AI models translate the alert into the
+local language and speak it, streamed so the voice starts within seconds, and an officer approves
+the alert before release.
+
+The current version is built and tested for **Chennai**, with Tamil alerts.
 
 Every number comes from a live public API. Nothing is hardcoded or mocked.
+
+> Because of the hackathon's time limits and the hardware available to us, we focused on one city.
+> The pipeline is not tied to Chennai, and our aim is to generalize it to any flood-prone city.
+> See [Beyond Chennai](#beyond-chennai).
 
 ## Run it
 
@@ -216,8 +223,38 @@ Use an always-on instance so the demo never hits a cold start. At start-up the s
 slow, rarely changing data (boundary, terrain, 20-year rainfall, buildings) in the background, so
 the first run after a deploy is quick. `Procfile` covers Heroku-style hosts.
 
+## Beyond Chennai
+
+We chose Chennai as the pilot because it floods during almost every north-east monsoon and has
+good public data to test against. Within the hackathon's time and hardware limits, one city done
+properly was more useful than several done halfway. The aim is a system any flood-prone city can use.
+
+Most of the pipeline already works from inputs rather than city-specific code:
+
+- the boundary comes from OSM Nominatim,
+- the rainfall return levels are computed from ERA5 for the area that is loaded,
+- terrain comes from the global Copernicus DEM,
+- buildings and roads come from OpenStreetMap, and routing uses public Valhalla / OSRM servers.
+
+What is Chennai-specific today:
+
+- the city used to load the boundary and to limit geocoding,
+- Tamil as the only alert language,
+- the Telegram alert channel and the replay dates, which are Chennai events.
+
+Next steps:
+
+- **City onboarding:** make the city a setting, so adding a new city needs only its name or
+  boundary and an alert channel.
+- **More languages:** use Bodhan's Indic models so each city gets alerts in its own language.
+- **Finer resolution and scale:** with more compute, use smaller grid cells, higher-resolution
+  rainfall sources where available, and monitor several cities at once.
+- **Local data:** add drainage networks, past flood records and ward boundaries where cities
+  publish them.
+
 ## Known limits
 
+- Built and tested for Chennai only so far (see [Beyond Chennai](#beyond-chennai)).
 - Rainfall models are ~9–25 km resolution, so cell-to-cell differences inside the city come mostly
   from terrain, not rain.
 - OSM tags many clinics as `amenity=hospital`, so hospital counts are upper bounds. Buildings
