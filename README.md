@@ -8,6 +8,83 @@ it, streamed so the voice starts within seconds, and an officer approves the ale
 
 Every number comes from a live public API. Nothing is hardcoded or mocked.
 
+**New to the code?** [ARCHITECTURE.md](ARCHITECTURE.md) explains how every part works, from the
+risk maths to the voice streaming, and where to change things.
+
+## Run it
+
+### Windows: double-click `run.bat`
+
+That's it. The first time, it:
+
+1. finds Python 3.10 or newer (install it from [python.org](https://www.python.org/downloads/)
+   and tick **Add python.exe to PATH** if you don't have it),
+2. creates a private virtual environment in `.venv` and installs the packages (about a minute),
+3. creates `.env` from `.env.example` if it doesn't exist yet,
+4. starts the server and opens http://localhost:8000 in your browser.
+
+Later runs skip straight to step 4 and reinstall packages only when `backend/requirements.txt`
+changes. Press **Ctrl+C** in the window to stop the app.
+
+```bat
+run.bat          :: port 8000
+run.bat 8001     :: another port, e.g. if 8000 is taken
+```
+
+Set `NO_BROWSER=1` before running if you don't want a browser tab to open.
+
+### macOS / Linux, or by hand
+
+```bash
+python -m venv .venv
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
+pip install -r backend/requirements.txt
+cp .env.example .env                 # then add your keys
+python -m uvicorn app.main:app --app-dir backend --port 8000
+```
+
+Then open http://localhost:8000.
+
+### API keys
+
+Routing, weather, terrain and building data need no key. Without any keys the app still runs end
+to end, with template alerts in English only. Put keys in `.env` (never in `.env.example`, which is
+committed) and restart the app:
+
+| Key | Source | Unlocks |
+|---|---|---|
+| `GROQ_API_KEY` | console.groq.com (free) | request parsing, LLM-written alerts |
+| `GEMINI_API_KEY` | aistudio.google.com (free) | LLM fallback |
+| `BODHAN_TRANSLATE_API_KEY` | console.bodhan.ai (₹10 free credit) | Tamil alert |
+| `BODHAN_TTS_API_KEY` | console.bodhan.ai | Tamil voice alert |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | @BotFather | on hold: also posts approved alerts |
+
+The top bar of the app shows which services are connected.
+
+### Using it
+
+Pick a scenario on the start screen, or set the mission on the left and press **Deploy agent**:
+
+- **Live forecast** looks at the next 24–72 hours from now. On a dry day it reports all clear.
+- **Replay event** runs the same pipeline on archived forecasts from a past date, which is the
+  way to demo a flood (see [Replay mode](#replay-mode)).
+- **Ask the agent** is optional free text, e.g. "Check Adyar and Velachery for the next 48 hours".
+
+While it works, the agent graph on the left lights up step by step. When it finishes, the map shows
+the risk columns and plays a rainfall time-lapse, the right panel shows the alert (English / Tamil),
+the Tamil voice starts by itself, and the Buildings and Safe routes tabs fill in. Hold **Approve**
+to release the alert.
+
+### Tests and command line
+
+```bash
+python -m pytest backend/tests -q                    # unit tests, no network
+python backend/scripts/smoke_run.py 2022-11-01       # one full replay run, trace printed
+python backend/scripts/smoke_run.py                  # one live run
+```
+
+`smoke_run.py` calls the real APIs, including Bodhan, so it uses a little credit.
+
 ## Architecture
 
 ```mermaid
@@ -90,33 +167,6 @@ the multi-day total alone beats the 2-year level. The rules live in
 - **Tamil voice alert:** generated automatically after the run, in parallel parts. Part 1 is ready
   in a few seconds and starts playing while the rest are still being made.
 
-## Setup
-
-```bash
-python -m pip install -r backend/requirements.txt
-cp .env.example .env   # add keys; all are optional
-python -m uvicorn app.main:app --app-dir backend --port 8000
-```
-
-Open http://localhost:8000. Routing needs no key. Without other keys the app still runs, with
-template alerts in English only. Add keys to unlock each piece:
-
-| Key | Source | Unlocks |
-|---|---|---|
-| `GROQ_API_KEY` | console.groq.com (free) | request parsing, LLM-written alerts |
-| `GEMINI_API_KEY` | aistudio.google.com (free) | LLM fallback |
-| `BODHAN_TRANSLATE_API_KEY` | console.bodhan.ai (₹10 free credit) | Tamil alert |
-| `BODHAN_TTS_API_KEY` | console.bodhan.ai | Tamil voice alert |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | @BotFather | on hold: also posts approved alerts |
-
-Command-line run without the UI:
-
-```bash
-python backend/scripts/smoke_run.py                 # live forecast
-python backend/scripts/smoke_run.py 2022-11-01      # replay
-python -m pytest backend/tests -q
-```
-
 ## Replay mode
 
 Live weather may be dry on demo day, so the same pipeline can run on Open-Meteo's archive of
@@ -128,6 +178,9 @@ past forecasts (2022 onwards). Useful dates:
 | 2024-10-15 | Heavy rain red alert | 11 high, 54 moderate |
 | 2024-11-30 | Cyclone Fengal, 189 mm | 50 severe, 15 high |
 | 2023-12-03 | Cyclone Michaung, 258 mm | all severe |
+
+Before a demo, run each scenario you plan to show once. Responses are cached, so the run in front
+of the judges is instant even if a public server is slow that day.
 
 ## API
 
