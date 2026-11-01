@@ -131,3 +131,30 @@ def test_focus_circle_covers_every_named_place():
 
 def test_single_place_keeps_default_radius():
     assert _focus_around([{"name": "Velachery", "lat": 12.9791, "lon": 80.2209}])["radius_km"] == FOCUS_RADIUS_KM
+
+
+def _approved_run(replay_date):
+    from app.events import Run
+
+    run = Run(id="t", request={})
+    run.result = {
+        "replay_date": replay_date,
+        "cells": {"features": [{"properties": {"level": "severe", "in_focus": True}}]},
+        "alert": {"headline_en": "Flood <warning> & alert", "body_en": "134 mm expected.", "actions_en": ["Call 1913"]},
+    }
+    return run
+
+
+def test_replay_post_is_labelled_demo_and_escaped():
+    from app.agent.runner import _format
+
+    post = _format(_approved_run("2022-11-01"), "en", 0)
+    assert post.startswith("🧪 <b>DEMO</b>") and "not a current warning" in post
+    assert "SEVERE FLOOD RISK" in post
+    assert "Flood &lt;warning&gt; &amp; alert" in post
+
+
+def test_live_post_has_no_demo_label():
+    from app.agent.runner import _format
+
+    assert "DEMO" not in _format(_approved_run(None), "en", 0)

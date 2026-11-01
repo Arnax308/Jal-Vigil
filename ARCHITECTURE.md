@@ -78,7 +78,7 @@ Chennai-Flood-Agent/
 │   │       ├── routing.py      Valhalla block-and-reroute loop, OSRM fallback
 │   │       ├── llm.py          Groq, then Gemini, JSON mode
 │   │       ├── bodhan.py       Bodhan Indic-Translate and Indic-Speak
-│   │       └── telegram.py     dormant: posts approved alerts if configured
+│   │       └── telegram.py     posts approved alerts to the public Telegram channel
 │   ├── scripts/smoke_run.py    one full run from the command line, trace printed
 │   └── tests/                  unit tests for risk scoring, guardrails and focus areas
 ├── frontend/                   plain ES modules, no build step
@@ -513,8 +513,9 @@ A dropped helpline or a changed rainfall figure fails the check.
 - **Parallel synthesis:** parts are made 6 at a time (Bodhan allows 10 parallel requests per key).
   Each part is saved as `data/audio/<hash>-<i>.wav` as soon as it lands, and an event
   `voice_chunk {index, total, url}` goes to the browser.
-- **Playback:** the browser player (`voice.js`) starts part 1 at once and moves to the next part
-  when one ends, waiting if the next is not ready yet. Measured: part 1 in about 4 s, all 8–9 parts
+- **Playback:** the play button in the browser player (`voice.js`) works as soon as part 1 exists
+  (auto-play is an opt-in toggle). It moves to the next part when one ends, waiting if the next is
+  not ready yet. Measured: part 1 in about 4 s, all 8–9 parts
   in about 20 s.
 - **Full file:** once all parts are in, they are joined into `data/audio/<hash>.wav` for download.
 - **Caching:** the hash covers voice, language and text, so the same alert never costs credits twice.
@@ -522,7 +523,13 @@ A dropped helpline or a changed rainfall figure fails the check.
 ### Approval
 
 `POST /approve` only works when the run is `awaiting_approval`. It records the time, emits
-`approved`, and (only if both Telegram settings exist) posts the English and Tamil text. The
+`approved`, and (if both Telegram settings exist) posts the English and then the Tamil alert to the
+public channel. Each post is HTML: a severity line (e.g. "🔴 SEVERE FLOOD RISK · Chennai"), the bold
+headline, the body, the actions as bullets, and the approval time. **Replays always start with
+"🧪 DEMO · replay of archived forecasts from <date>, not a current warning"**, because the channel is
+public and a replayed 2022 flood must never read as a live warning. The approval stands even if
+Telegram fails; the error is returned next to it and shown in the UI. The response includes links to
+the posts (`https://t.me/<channel>/<message id>`), which the UI shows under the stamp. The
 press-and-hold button in the UI is deliberate friction: a stray click must never release a public
 alert.
 
@@ -620,7 +627,8 @@ All paths are under the same host as the UI.
 {"status": "ok", "app_name": "Chennai Flood Agent",
  "llm_providers": ["groq:openai/gpt-oss-120b", "gemini:gemini-3.5-flash"],
  "routing": "Valhalla (avoids risk cells) + OSRM fallback",
- "tamil_translation": true, "tamil_speech": true, "telegram": false,
+ "tamil_translation": true, "tamil_speech": true,
+ "telegram": true, "telegram_channel": "https://t.me/ChennaiFloodAlert",
  "replay_range": ["2022-01-01", "2026-10-29"]}
 ```
 
@@ -662,7 +670,7 @@ the point is outside Chennai, 502 if routing failed.
 elevation_m, lat, lon, osm_url`. The CSV starts with a byte-order mark so Excel shows Tamil names
 correctly.
 
-**`POST /api/runs/{id}/approve`** → `{status: "approved", approved_at, telegram_message_ids}`; 409
+**`POST /api/runs/{id}/approve`** → `{status: "approved", approved_at, telegram: {configured, posts: [urls], error}}`; 409
 unless the run is `awaiting_approval`.
 
 **`POST /api/runs/{id}/speech`** → `{url}`. Regenerates the voice if the automatic attempt failed.
@@ -691,8 +699,9 @@ JetBrains Mono, Noto Sans Tamil). The basemap is OpenFreeMap's dark style, which
 2. Each event → appended to the trace and passed to the agent graph view.
 3. `done` → fetch `/api/runs/{id}` → `renderResult()` draws the map, stats, chart, alert,
    buildings and routes, then plays the time-lapse once.
-4. `voice_chunk` → `voice.addPart()`. Part 1 auto-plays if the toggle is on, which browsers allow
-   because the user already clicked Deploy.
+4. `voice_chunk` → `voice.addPart()`. The play button turns on as soon as part 1 exists. Auto-play
+   is off by default; if the officer ticks it, part 1 starts by itself, which browsers allow because
+   the user already clicked Deploy.
 5. `end` → stream closed.
 
 **Map design choices:**
@@ -728,7 +737,8 @@ All settings are environment variables, read once at start-up from the process e
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | none, `gemini-3.5-flash` | fallback LLM |
 | `BODHAN_TRANSLATE_API_KEY` | none | Tamil translation |
 | `BODHAN_TTS_API_KEY`, `BODHAN_VOICE` | none, `Anitha` | Tamil voice (`Arun` is the male voice) |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | none | on hold; post approved alerts |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | none | bot token and channel `@handle`; approved alerts are posted there |
+| `TELEGRAM_CHANNEL_URL` | derived from `@handle` | public join link shown in the app; set only for a private channel |
 | `USER_AGENT` | `chennai-flood-agent/0.1 (hackathon prototype)` | identifies us to OSM/FOSSGIS; add a contact |
 | `APP_NAME` | Chennai Flood Agent | title in the UI |
 | `GRID_STEP_DEG` | 0.025 | cell size in degrees (about 2.8 km) |

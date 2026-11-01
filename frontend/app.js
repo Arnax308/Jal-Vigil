@@ -50,7 +50,8 @@ async function loadHealth() {
       [h.tamil_translation ? "Tamil · Bodhan Translate" : "Tamil · off", h.tamil_translation],
       [h.tamil_speech ? "Voice · Bodhan Speak" : "Voice · off", h.tamil_speech],
     ];
-    if (h.telegram) chips.push(["Telegram · ready", true]);
+    if (h.telegram) chips.push([`Telegram · ${h.telegram_channel ? "@" + h.telegram_channel.split("/").pop() : "ready"}`, true]);
+    if (h.telegram_channel) setupTelegram(h.telegram_channel);
     $("#capabilities").replaceChildren(...chips.map(([t, on]) => chip(t, on ? "on" : "off")));
     const [min, max] = h.replay_range;
     Object.assign($("#replay-date"), { min, max });
@@ -284,6 +285,7 @@ function renderAlert(res) {
   approve.disabled = false;
   $("#approve-label").textContent = "Hold to approve";
   $("#approve-stamp").hidden = true;
+  $("#tg-posts").hidden = true;
 }
 
 function setLang(lang) {
@@ -346,12 +348,62 @@ async function approve() {
     stamp.textContent = `Released ${when} IST`;
     stamp.hidden = false;
     appendTrace({ type: "approved", message: "Officer approved the alert for release" });
+    renderTelegramPosts(res.telegram);
     setStatus("approved");
   } catch (err) {
     approveBtn.disabled = false;
     $("#approve-label").textContent = "Hold to approve";
     toast(err.message);
   }
+}
+
+// telegram: public channel link, QR code, and links to the posts an approval created
+
+const PLANE = document.querySelector("#tg-join svg")?.outerHTML || "";
+
+function setupTelegram(url) {
+  const handle = `@${url.split("/").pop()}`;
+  const join = $("#tg-join"), pop = $("#tg-pop");
+  join.hidden = false;
+  $("#tg-link").href = url;
+  $("#tg-handle").textContent = `Open ${handle}`;
+  $("#hero-tg").href = url;
+  $("#hero-tg").hidden = false;
+  $("#hero-tg-handle").textContent = url.replace(/^https?:\/\//, "");
+  if (window.qrcode) {
+    const qr = window.qrcode(0, "M");
+    qr.addData(url);
+    qr.make();
+    $("#tg-qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+  }
+  const toggle = (open) => {
+    pop.hidden = !open;
+    join.setAttribute("aria-expanded", String(open));
+  };
+  join.addEventListener("click", (e) => { e.stopPropagation(); toggle(pop.hidden); });
+  document.addEventListener("click", (e) => { if (!pop.hidden && !pop.contains(e.target)) toggle(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") toggle(false); });
+}
+
+function renderTelegramPosts(delivery) {
+  const box = $("#tg-posts");
+  box.replaceChildren();
+  if (!delivery?.configured) { box.hidden = true; return; }
+  box.hidden = false;
+  if (delivery.error) {
+    box.append(Object.assign(document.createElement("span"), { className: "bad", textContent: `Not posted to Telegram: ${delivery.error}` }));
+    return;
+  }
+  box.append("Posted to Telegram:");
+  delivery.posts.forEach((url, i) => {
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.innerHTML = PLANE;
+    a.append(i === 0 ? "English post" : "Tamil post");
+    box.append(a);
+  });
 }
 
 // buildings

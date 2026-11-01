@@ -41,9 +41,10 @@ class Settings:
     bodhan_voice: str = _env("BODHAN_VOICE", "Anitha")  # Tamil voices: Anitha (female), Arun (male)
     audio_dir: str = _env("AUDIO_DIR", str(ROOT / "data" / "audio"))
 
-    # Telegram delivery is on hold; approval works without it and sends only if both are set.
+    # Approved alerts are posted to this Telegram chat (a public channel's @handle) if both are set.
     telegram_bot_token: str = _env("TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = _env("TELEGRAM_CHAT_ID")
+    telegram_channel_url: str = _env("TELEGRAM_CHANNEL_URL")  # optional; derived from an @handle
 
     overpass_urls: tuple[str, ...] = _env_list(
         "OVERPASS_URLS",

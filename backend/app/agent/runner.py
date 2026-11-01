@@ -1,5 +1,6 @@
 """Runs the graph for one request and turns the final state into the API's JSON shape."""
 
+import html
 import time
 from dataclasses import asdict
 from typing import Any
@@ -71,19 +72,31 @@ def _voice(run: Run) -> str:
 
 
 def approve(run: Run) -> dict[str, Any]:
-    """Record the officer's approval. Telegram delivery is on hold and runs only if configured."""
+    """Record the officer's approval, then post the alert to the Telegram channel if configured.
+
+    Approval always stands; a Telegram failure is reported alongside it, not instead of it.
+    """
     alert = run.result["alert"]
     approved_at = time.time()
     run.result["approved_at"] = approved_at
+    run.status = "approved"
+    delivery: dict[str, Any] = {"configured": telegram.configured(), "posts": [], "error": None}
     with bind(run):
         emit("approved", "Officer approved the alert for release")
-        sent: list[int] = []
         if telegram.configured():
-            messages = [_format(alert, "en")] + ([_format(alert, "ta")] if alert.get("body_ta") else [])
-            sent = [telegram.send(text) for text in messages]
-            emit("sent", f"{len(sent)} Telegram message(s) delivered")
-    run.status = "approved"
-    return {"approved_at": approved_at, "telegram_message_ids": sent}
+            langs = ["en"] + (["ta"] if alert.get("body_ta") else [])
+            channel = telegram.channel_url()
+            try:
+                for lang in langs:
+                    message_id = telegram.send(_format(run, lang, approved_at))
+                    delivery["posts"].append(f"{channel}/{message_id}" if channel else str(message_id))
+                emit("sent", f"Posted to the Telegram channel ({' and '.join(l.upper() for l in langs)})",
+                     posts=delivery["posts"])
+            except ToolError as exc:
+                delivery["error"] = str(exc)
+                emit("warning", f"Approved, but Telegram did not accept the post: {exc}")
+    run.result["telegram"] = delivery
+    return {"approved_at": approved_at, "telegram": delivery}
 
 
 def speech(run: Run) -> str:
@@ -110,9 +123,30 @@ def buildings(run: Run) -> list[dict[str, Any]]:
     ]
 
 
-def _format(alert: dict[str, Any], lang: str) -> str:
-    actions = "\n".join(f"- {a}" for a in alert.get(f"actions_{lang}", []))
-    return f"{alert[f'headline_{lang}']}\n\n{alert[f'body_{lang}']}\n\n{actions}".strip()
+LEVEL_BADGE = {"severe": ("🔴", "SEVERE"), "high": ("🟠", "HIGH"), "moderate": ("🟡", "MODERATE")}
+
+
+def _format(run: Run, lang: str, approved_at: float) -> str:
+    """Telegram post (HTML): severity line, headline, body, actions, and a clear label for replays."""
+    result, alert = run.result, run.result["alert"]
+    levels = [f["properties"]["level"] for f in result["cells"]["features"] if f["properties"]["in_focus"]]
+    worst = max(levels, key=["low", "moderate", "high", "severe"].index, default="high")
+    icon, word = LEVEL_BADGE.get(worst, ("⚠️", "HIGH"))
+    when = time.strftime("%d %b %Y, %H:%M", time.gmtime(approved_at + 5.5 * 3600))  # IST
+    parts = []
+    if result.get("replay_date"):
+        # The channel is public: a replayed past event must never read as a current warning.
+        parts.append(f"🧪 <b>DEMO</b> · replay of archived forecasts from {result['replay_date']}, "
+                     "not a current warning")
+    parts.append(f"{icon} <b>{word} FLOOD RISK</b> · Chennai" if lang == "en"
+                 else f"{icon} <b>வெள்ள எச்சரிக்கை</b> · சென்னை")
+    parts.append(f"<b>{html.escape(alert[f'headline_{lang}'])}</b>")
+    parts.append(html.escape(alert[f"body_{lang}"]))
+    actions = alert.get(f"actions_{lang}", [])
+    if actions:
+        parts.append("\n".join(f"• {html.escape(a)}" for a in actions))
+    parts.append(f"<i>Approved {when} IST · Chennai Flood Agent</i>")
+    return "\n\n".join(parts)
 
 
 def _latest_sources(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:

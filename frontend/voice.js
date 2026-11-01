@@ -1,4 +1,4 @@
-// Progressive Tamil voice player: plays part 1 as soon as it exists while later parts are still
+// Progressive Tamil voice player: can play part 1 as soon as it exists while later parts are still
 // being synthesised, and draws a live waveform from the audio being played.
 
 export function createVoicePlayer(els) {

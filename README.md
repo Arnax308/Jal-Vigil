@@ -57,7 +57,7 @@ committed) and restart the app:
 | `GEMINI_API_KEY` | aistudio.google.com (free) | LLM fallback |
 | `BODHAN_TRANSLATE_API_KEY` | console.bodhan.ai (₹10 free credit) | Tamil alert |
 | `BODHAN_TTS_API_KEY` | console.bodhan.ai | Tamil voice alert |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | @BotFather | on hold: also posts approved alerts |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | @BotFather; chat id is the channel's `@handle` | posts approved alerts to the public channel |
 
 The top bar of the app shows which services are connected.
 
@@ -72,8 +72,11 @@ Pick a scenario on the start screen, or set the mission on the left and press **
 
 While it works, the agent graph on the left lights up step by step. When it finishes, the map shows
 the risk columns and plays a rainfall time-lapse, the right panel shows the alert (English / Tamil),
-the Tamil voice starts by itself, and the Buildings and Safe routes tabs fill in. Hold **Approve**
-to release the alert.
+the Tamil voice is ready to play within seconds, and the Buildings and Safe routes tabs fill in. Hold **Approve**
+to release the alert: it is posted to the public Telegram channel
+[t.me/ChennaiFloodAlert](https://t.me/ChennaiFloodAlert) in English and Tamil, with links to both
+posts. Anyone can join from the **Join alerts** button (it shows a QR code). Replays are posted with a
+clear "DEMO · not a current warning" label.
 
 ### Tests and command line
 
@@ -165,7 +168,8 @@ the multi-day total alone beats the 2-year level. The rules live in
 - **Safe routes:** type a place, click the map or use your location. The agent routes you to the
   nearest relief site through the same block-and-reroute loop and shows every attempt it made.
 - **Tamil voice alert:** generated automatically after the run, in parallel parts. Part 1 is ready
-  in a few seconds and starts playing while the rest are still being made.
+  in a few seconds; press play and it starts while the rest are still being made. Tick
+  **Auto-play** to have it start on its own.
 
 ## Replay mode
 
@@ -189,7 +193,7 @@ of the judges is instant even if a public server is slow that day.
 | POST | `/api/runs` | start a run: `{mode, replay_date, horizon_hours, query}` |
 | GET | `/api/runs/{id}/events` | live trace (Server-Sent Events, resumable) |
 | GET | `/api/runs/{id}` | final result: cells GeoJSON, facilities, routes, alert, sources |
-| POST | `/api/runs/{id}/approve` | officer approval (Telegram delivery on hold) |
+| POST | `/api/runs/{id}/approve` | officer approval; posts the alert to the Telegram channel |
 | POST | `/api/runs/{id}/route` | safe route from `{place}` or `{lat, lon}` to the nearest relief site |
 | GET | `/api/runs/{id}/buildings.csv` | at-risk buildings (CSV) |
 | GET | `/api/runs/{id}/buildings.geojson` | at-risk buildings (GeoJSON) |

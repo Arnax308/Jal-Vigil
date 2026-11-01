@@ -3,7 +3,7 @@
 POST /api/runs                 start an agent run
 GET  /api/runs/{id}/events     live trace (Server-Sent Events)
 GET  /api/runs/{id}            final result
-POST /api/runs/{id}/approve    officer approval (Telegram delivery on hold)
+POST /api/runs/{id}/approve    officer approval; posts the alert to the Telegram channel
 POST /api/runs/{id}/speech     re-try the Tamil voice alert (normally generated automatically)
 POST /api/runs/{id}/route      safe route from a point or place to the nearest relief site
 GET  /api/runs/{id}/buildings.csv | .geojson   at-risk buildings for download
@@ -69,6 +69,7 @@ def health() -> dict:
         "tamil_translation": bodhan.translation_configured(),
         "tamil_speech": bodhan.speech_configured(),
         "telegram": telegram.configured(),
+        "telegram_channel": telegram.channel_url(),
         "replay_range": [REPLAY_EARLIEST.isoformat(), (date.today() - timedelta(days=3)).isoformat()],
     }
 
@@ -116,10 +117,7 @@ async def approve_run(run_id: str) -> dict:
     run = _run_or_404(run_id)
     if run.status != "awaiting_approval":
         raise HTTPException(409, f"Run is '{run.status}', only drafted alerts can be approved")
-    try:
-        outcome = await asyncio.to_thread(runner.approve, run)
-    except ToolError as exc:
-        raise HTTPException(502, f"Approved, but Telegram did not accept the message: {exc}") from exc
+    outcome = await asyncio.to_thread(runner.approve, run)
     return {"status": run.status, **outcome}
 
 
