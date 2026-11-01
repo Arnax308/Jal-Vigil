@@ -8,9 +8,6 @@ it, streamed so the voice starts within seconds, and an officer approves the ale
 
 Every number comes from a live public API. Nothing is hardcoded or mocked.
 
-**New to the code?** [ARCHITECTURE.md](ARCHITECTURE.md) explains how every part works, from the
-risk maths to the voice streaming, and where to change things.
-
 ## Run it
 
 ### Windows: double-click `run.bat`
