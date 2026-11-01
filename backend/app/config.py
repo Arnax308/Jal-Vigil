@@ -20,7 +20,7 @@ def _env_list(name: str, default: str) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class Settings:
-    app_name: str = _env("APP_NAME", "Chennai Flood Agent")
+    app_name: str = _env("APP_NAME", "Jal-Vigil")
     city_query: str = "Chennai, Tamil Nadu, India"
     timezone: str = "Asia/Kolkata"
     # south, west, north, east: the Greater Chennai bounding box as returned by Nominatim

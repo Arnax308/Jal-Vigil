@@ -8,6 +8,7 @@ from typing import Any
 from shapely.geometry import mapping
 
 from ..clients import bodhan, telegram
+from ..config import settings
 from ..events import Run, bind, emit
 from ..http import ToolError
 from . import safe_route as safe_route_module
@@ -145,7 +146,7 @@ def _format(run: Run, lang: str, approved_at: float) -> str:
     actions = alert.get(f"actions_{lang}", [])
     if actions:
         parts.append("\n".join(f"• {html.escape(a)}" for a in actions))
-    parts.append(f"<i>Approved {when} IST · Chennai Flood Agent</i>")
+    parts.append(f"<i>Approved {when} IST · {html.escape(settings.app_name)}</i>")
     return "\n\n".join(parts)
 
 

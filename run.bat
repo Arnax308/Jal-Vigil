@@ -1,10 +1,10 @@
 @echo off
-rem Chennai Flood Agent launcher for Windows.
+rem Jal-Vigil launcher for Windows.
 rem   run.bat          start on port 8000 and open the browser
 rem   run.bat 8001     use another port
 rem   set NO_BROWSER=1 before running to skip opening the browser
 setlocal EnableExtensions
-title Chennai Flood Agent
+title Jal-Vigil
 cd /d "%~dp0"
 
 set "PORT=%~1"
@@ -12,8 +12,8 @@ if "%PORT%"=="" set "PORT=8000"
 set "VENV_PY=.venv\Scripts\python.exe"
 
 echo.
-echo  Chennai Flood Agent
-echo  ===================
+echo  Jal-Vigil
+echo  =========
 echo.
 
 rem --- 1. Python 3.10 or newer -------------------------------------------------------------------
