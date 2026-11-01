@@ -3,8 +3,7 @@
 import hashlib
 import math
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, timedelta, timezone
 
 import numpy as np
 
@@ -20,6 +19,9 @@ ELEVATION_URL = "https://api.open-meteo.com/v1/elevation"
 CLIMATOLOGY_START, CLIMATOLOGY_END = "2005-01-01", "2024-12-31"
 # Earliest day the historical-forecast archive covers.
 REPLAY_EARLIEST = date(2022, 1, 1)
+# India has no daylight saving, so IST is always UTC+05:30. A fixed offset avoids zoneinfo, which
+# needs the tzdata package on Windows (not installed in a fresh virtual environment).
+IST = timezone(timedelta(hours=5, minutes=30), "IST")
 
 
 @dataclass(frozen=True)
@@ -70,7 +72,7 @@ def rainfall(points: list[tuple[float, float]], *, horizon_hours: int, replay_da
             "Open-Meteo Forecast API", [FORECAST_URL], params=params,
             cache_key=f"forecast:{key}:{params['forecast_days']}", ttl=15 * 60,
         )
-        now = datetime.now(ZoneInfo(settings.timezone)).strftime("%Y-%m-%dT%H:00")
+        now = datetime.now(IST).strftime("%Y-%m-%dT%H:00")
     else:
         end = replay_date + timedelta(days=math.ceil(horizon_hours / 24) - 1)
         params.update(start_date=replay_date.isoformat(), end_date=end.isoformat())
